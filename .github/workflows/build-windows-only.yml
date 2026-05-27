@@ -69,7 +69,7 @@ jobs:
         run: Invoke-WebRequest -Uri https://github.com/c-smile/sciter-sdk/raw/master/bin.win/x64/sciter.dll -OutFile sciter.dll
 
       - name: Build
-        run: python3 .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack
+        run: python3 .\build.py --portable --flutter --skip-portable-pack
 
       - name: Upload artifacts
         uses: actions/upload-artifact@master
