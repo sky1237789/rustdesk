@@ -5,10 +5,12 @@ on:
 
 env:
   MAC_RUST_VERSION: "1.81"
-  FLUTTER_VERSION: "3.24.5"
+  # Apple Silicon must use Flutter 3.44 (3.24.5 engine crashes, rustdesk#16817), same as upstream 1.5.3
+  FLUTTER_MACOS_ARM_VERSION: "3.44.9"
+  FLUTTER_BRIDGE_VERSION: "3.44.8"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-  VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
-  VERSION: "1.4.6"
+  VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
+  VERSION: "1.5.3"
   FLUTTER_RUST_BRIDGE_VERSION: "1.80.1"
   CARGO_EXPAND_VERSION: "1.0.95"
 
@@ -41,7 +43,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: "stable"
-          flutter-version: "3.22.3"
+          flutter-version: ${{ env.FLUTTER_BRIDGE_VERSION }}
           cache: true
 
       - name: Install flutter rust bridge deps
@@ -49,7 +51,9 @@ jobs:
         run: |
           cargo install cargo-expand --version ${{ env.CARGO_EXPAND_VERSION }} --locked
           cargo install flutter_rust_bridge_codegen --version ${{ env.FLUTTER_RUST_BRIDGE_VERSION }} --features "uuid" --locked
-          pushd flutter && sed -i -e 's/extended_text: 14.0.0/extended_text: 13.0.0/g' pubspec.yaml && flutter pub get && popd
+          # Flutter 3.44 bridge: match the macOS arm64 build's patched sources (upstream bridge.yml)
+          bash .github/patches/apply_flutter_3.44_source_patches.sh
+          pushd flutter && flutter pub get && popd
 
       - name: Run flutter rust bridge
         run: |
@@ -70,7 +74,7 @@ jobs:
   build-macos-arm64:
     name: build-macos-arm64
     needs: generate-bridge
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Export cache env
         uses: actions/github-script@v6
@@ -110,13 +114,25 @@ jobs:
         uses: subosito/flutter-action@v2.12.0
         with:
           channel: "stable"
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+          flutter-version: ${{ env.FLUTTER_MACOS_ARM_VERSION }}
+
+      - name: Keep CocoaPods for Flutter 3.44
+        # 3.44 enables Swift Package Manager by default; upstream keeps CocoaPods
+        run: flutter config --no-enable-swift-package-manager
 
       - name: Workaround for flutter issue
         shell: bash
         run: |
           cd "$(dirname "$(which flutter)")"
           sed -i -e 's/_setFramesEnabledState(false);/\/\/_setFramesEnabledState(false);/g' ../packages/flutter/lib/src/scheduler/binding.dart || true
+
+      - name: Patch RustDesk sources for Flutter 3.44
+        # The script uses GNU sed -i, which macOS BSD sed rejects (same as upstream)
+        shell: bash
+        run: |
+          brew install gnu-sed
+          export PATH="$(brew --prefix gnu-sed)/libexec/gnubin:$PATH"
+          bash .github/patches/apply_flutter_3.44_source_patches.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
@@ -127,7 +143,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: macos-14-arm64
+          prefix-key: macos-15-arm64
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
