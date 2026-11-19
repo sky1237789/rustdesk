@@ -27,7 +27,13 @@ jobs:
           path: ./out
 
       - name: List downloaded files
-        run: ls -la ./out
+        run: ls -laR ./out | head -100
+
+      - name: Pack whole artifact into one zip (keeps subfolders like data/)
+        run: |
+          mkdir -p ./pub
+          cd ./out && zip -qry ../pub/${{ github.event.inputs.artifact_name }}.zip . && cd ..
+          ls -la ./pub
 
       - name: Publish release
         uses: softprops/action-gh-release@v1
@@ -35,6 +41,6 @@ jobs:
           tag_name: republish-${{ github.run_id }}
           name: Republished artifact ${{ github.event.inputs.artifact_name }}
           prerelease: true
-          files: ./out/*
+          files: ./pub/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
